@@ -1,15 +1,27 @@
-import express, { type NextFunction, type Request, type Response } from "express";
+import express, { type ErrorRequestHandler, type NextFunction, type Request, type Response } from "express";
 import cors from "cors"
 import bodyParser from "body-parser";
-import bcrypt from 'bcrypt';
 
-//variables
-type User = {
-  username: string,
-  hash: string
+import { signInController, signUpController } from "./controller/loginController.ts";
+
+
+export class AppError extends Error {
+  status: number;
+
+  constructor(message, status) {
+    super(message)
+    this.status = status;
+  }
 }
-let users: User[] = [];
 
+export class ValidationError extends AppError {
+  details: string[];
+
+  constructor(message, details=[]) {
+    super(message, 400);
+    this.details = details;
+  }
+}
 
 const app = express();
 
@@ -23,6 +35,11 @@ app.post("/user/sign-up", signUpController)
 app.get('/', (req: Request, res: Response) => {
   res.send('dont get from here')
 })
+
+//error handler
+app.use(errorHandler);
+
+
 app.listen(process.env.PORT, () => {
   console.log("server");
 })
@@ -32,46 +49,19 @@ function validateUserBody(req: Request, res: Response, next: NextFunction) {
   const valdationErrorMessage = "no username or password";
   const noBodyMessage = "no body"
   
-  if(!req.body) return res.status(500).send(noBodyMessage)
-  if(!req.body.username) return res.status(401).send(valdationErrorMessage)
-  if(!req.body.password) return res.status(401).send(valdationErrorMessage)
+  if(!req.body) throw new ValidationError('no body')
+  if(!req.body.username) throw new ValidationError('no username')
+  if(!req.body.password) throw new ValidationError('no password')
   
   next()
 }
 
-//controllers
-async function signInController(req: Request, res: Response) {
-  const { username, password }: { username: string, password: string} = req.body;
+function errorHandler(err: any, req: Request, res: Response, next: NextFunction) {
+  console.error("Error: ", err.message)
 
-  const userFound = users.find(user => user.username == username);
-  if (!userFound) return res.status(401).send("user not found");
-  
-  const passwordValid = await checkPassword(password, userFound.hash)
-  if (!passwordValid) return res.status(401).send("password isnt valid")
-  
-  res.send('sign-in')
-}
-async function signUpController(req: Request, res: Response) {
-  const { username, password } = req.body;
-
-  const hash = await hashPassword(password);
-
-  users.push({username, hash});
-
-  res.send('sign-up')
-}
-
-//services
-async function hashPassword(password: string, saltRounds: number = 10): Promise<string> {
-  const salt = await bcrypt.genSalt(saltRounds);
-  const pepper = process.env.PEPPER;
-  const hash = await bcrypt.hash(password + pepper, salt);
-
-  return hash;
-}
-async function checkPassword(password: string, hash: string): Promise<boolean> {
-  const pepper = process.env.PEPPER;
-  const passwordValid = await bcrypt.compare(password + pepper, hash);
-
-  return passwordValid;
+  res.status(err.status || 500).json({
+    status: "Error",
+    message: err.message || "Internal server error",
+    details: err.details || []
+  })
 }
