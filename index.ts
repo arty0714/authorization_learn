@@ -2,12 +2,12 @@ import express, { type ErrorRequestHandler, type NextFunction, type Request, typ
 import cors from "cors"
 import cookieParser from 'cookie-parser';
 import bodyParser from "body-parser";
-import jwt from "jsonwebtoken";
 
 
 import { refreshAccessToken, signInController, signUpController } from "./controller/loginController.ts";
 import { generate2fa, validate2fa } from "./controller/2faController.ts";
 import { users } from "./db/index.ts"
+import { JWTUtils, type JWTPayload } from "./utils/jwt.ts";
 
 export class AppError extends Error {
   status: number;
@@ -43,6 +43,7 @@ app.post("/user/refresh", refreshAccessToken)
 // app.post("/")
 
 app.get('/', validateAuth, (req: Request, res: Response) => {
+  //@ts-ignore
   res.status(200).json({ user: req.user})
 })
 
@@ -77,16 +78,14 @@ function errorHandler(err: any, req: Request, res: Response, next: NextFunction)
 }
 
 async function validateAuth(req: Request, res: Response, next: NextFunction) {
-  const jwtTokenHeader: string = process.env.JWTHEADER || '';
-  const jwtSecret: string = process.env.JWTSECRET || '';
-  
+  const jwtTokenHeader: string = process.env.JWTHEADER || 'Authentification';
   // check if there is a token
   const token = req.header(jwtTokenHeader);
 
   if (!token) throw new ValidationError('no token');
 
   // check if token is valid
-  const tokenData = jwt.verify(token, jwtSecret);
+  const tokenData: JWTPayload = JWTUtils.verifyToken(token);
 
   if (!tokenData) throw new ValidationError('token isnt valid');
 

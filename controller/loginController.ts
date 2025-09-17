@@ -2,12 +2,10 @@ import { type Request, type Response } from "express";
 import { checkPassword, hashPassword } from "../service/loginService.ts";
 import { AppError, ValidationError } from "../index.ts";
 import { v4 as uuidv4 } from 'uuid';
-import jwt from "jsonwebtoken";
 
 //variables
 import { users, createSession, sessionExists } from "../db/index.ts";
-
-const jwtSecret = process.env.JWTSECRET;
+import { JWTUtils, type JWTPayload } from "../utils/jwt.ts";
 
 
 export async function signInController(req: Request, res: Response) {
@@ -19,14 +17,9 @@ export async function signInController(req: Request, res: Response) {
   const passwordValid = await checkPassword(password, userFound.hash)
   if (!passwordValid) throw new ValidationError("Password isn\'t valid")
   
-  const accessToken = jwt.sign({ id: userFound.id }, jwtSecret, {
-    algorithm: 'HS256',
-    expiresIn: '1m'
-  })
-  const refreshToken = jwt.sign({ id: userFound. id }, jwtSecret, {
-    algorithm: 'HS256',
-    expiresIn: '7d'
-  })
+  const { accessToken, refreshToken } = JWTUtils.getTokenPair({
+    id: userFound.id
+  });
 
   createSession(refreshToken);
   
@@ -36,7 +29,6 @@ export async function signInController(req: Request, res: Response) {
     path: '/user/refresh',
     sameSite: 'strict'
   })
-
 
   res.json({
     message: "success",
@@ -60,12 +52,8 @@ export async function refreshAccessToken(req: Request, res: Response) {
   if (!refreshToken) throw new AppError("no refresh token", 500);
   if (!sessionExists(refreshToken)) throw new ValidationError("refresh token is not valid");
 
-  const payload = jwt.verify(refreshToken, jwtSecret);
-  const userId = payload.id;
-  const accessToken = jwt.sign({ id: userId }, jwtSecret, {
-    algorithm: 'HS256',
-    expiresIn: '1m'
-  })
+  const payload: JWTPayload = JWTUtils.verifyToken(refreshToken);
+  const accessToken = JWTUtils.getAccessToken(payload);
 
   res.status(200).json({
     message: 'success',
